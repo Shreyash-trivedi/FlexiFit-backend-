@@ -3,8 +3,9 @@ import jwt from "jsonwebtoken";
 import dotenv from "dotenv";
 import { createError } from "../error.js";
 import User from "../models/User.js";
-import Workout from "../models/Workout.js";
 import WorkoutPlan from "../models/Workout.js";
+import Workout from "../models/WorkoutRecords.js";
+import WorkoutRecords from "../models/WorkoutRecords.js";
 
 dotenv.config();
 
@@ -46,7 +47,6 @@ export const UserLogin = async (req, res, next) => {
     if (!user) {
       return next(createError(404, "User not found"));
     }
-    console.log(user);
     // Check if password is correct
     const isPasswordCorrect = await bcrypt.compareSync(password, user.password);
     if (!isPasswordCorrect) {
@@ -84,7 +84,7 @@ export const getUserDashboard = async (req, res, next) => {
     );
 
     //calculte total calories burnt
-    const totalCaloriesBurnt = await Workout.aggregate([
+    const totalCaloriesBurnt = await WorkoutRecords.aggregate([
       { $match: { user: user._id, date: { $gte: startToday, $lt: endToday } } },
       {
         $group: {
@@ -95,7 +95,7 @@ export const getUserDashboard = async (req, res, next) => {
     ]);
 
     //Calculate total no of workouts
-    const totalWorkouts = await Workout.countDocuments({
+    const totalWorkouts = await WorkoutRecords.countDocuments({
       user: userId,
       date: { $gte: startToday, $lt: endToday },
     });
@@ -107,7 +107,7 @@ export const getUserDashboard = async (req, res, next) => {
         : 0;
 
     // Fetch category of workouts
-    const categoryCalories = await Workout.aggregate([
+    const categoryCalories = await WorkoutRecords.aggregate([
       { $match: { user: user._id, date: { $gte: startToday, $lt: endToday } } },
       {
         $group: {
@@ -144,7 +144,7 @@ export const getUserDashboard = async (req, res, next) => {
         date.getDate() + 1
       );
 
-      const weekData = await Workout.aggregate([
+      const weekData = await WorkoutRecords.aggregate([
         {
           $match: {
             user: user._id,
@@ -185,6 +185,42 @@ export const getUserDashboard = async (req, res, next) => {
   }
 };
 
+export const fetchWorkouts = async (req, res, next) => {
+  try {
+    const userId = req.user?.id;
+    const user = await User.findById(userId);
+    let date = req.query.date ? new Date(req.query.date) : new Date();
+    if (!user) {
+      return next(createError(404, "User not found"));
+    }
+    const startOfDay = new Date(
+      date.getFullYear(),
+      date.getMonth(),
+      date.getDate()
+    );
+    const endOfDay = new Date(
+      date.getFullYear(),
+      date.getMonth(),
+      date.getDate() + 1
+    );
+
+    console.log(userId);
+
+    const todaysWorkouts = await WorkoutRecords.find({
+      user: userId,
+      date: { $gte: startOfDay, $lt: endOfDay },
+    });
+    const totalCaloriesBurnt = todaysWorkouts.reduce(
+      (total, workout) => total + workout.caloriesBurned,
+      0
+    );
+
+    return res.status(200).json({ todaysWorkouts, totalCaloriesBurnt });
+  } catch (err) {
+    next(err);
+  }
+};
+
 export const getWorkoutsByDate = async (req, res, next) => {
   try {
     const userId = req.user?.id;
@@ -205,10 +241,9 @@ export const getWorkoutsByDate = async (req, res, next) => {
     // );
 
     const workoutPlan = await WorkoutPlan.find({
-      userId: userId,
+      user: userId,
       // date: { $gte: startOfDay, $lt: endOfDay },
     });
-    console.log({ workoutPlan });
 
     const daysOfWeek = [
       "sunday",
@@ -225,7 +260,6 @@ export const getWorkoutsByDate = async (req, res, next) => {
     if (workoutPlan[0][currentDay]) {
       todaysWorkouts.push(workoutPlan[0][currentDay]);
     }
-    console.log(todaysWorkouts);
 
     const totalCaloriesBurnt = todaysWorkouts.reduce(
       (total, workout) => total + workout.caloriesBurned,
@@ -291,7 +325,6 @@ export const addWorkout = async (req, res, next) => {
       count++;
       if (line.startsWith("#")) {
         const parts = line?.split("\n").map((part) => part.trim());
-        console.log(parts);
         if (parts.length < 5) {
           return next(
             createError(400, `Workout string is missing for ${count}th workout`)
@@ -321,7 +354,7 @@ export const addWorkout = async (req, res, next) => {
     // Calculate calories burnt for each workout
     await parsedWorkouts.forEach(async (workout) => {
       workout.caloriesBurned = parseFloat(calculateCaloriesBurnt(workout));
-      await Workout.create({ ...workout, user: userId });
+      await WorkoutRecords.create({ ...workout, user: userId });
     });
 
     return res.status(201).json({
@@ -336,7 +369,6 @@ export const addWorkout = async (req, res, next) => {
 // Function to parse workout details from a line
 const parseWorkoutLine = (parts) => {
   const details = {};
-  console.log(parts);
   if (parts.length >= 5) {
     details.workoutName = parts[1].substring(1).trim();
     details.sets = parseInt(parts[2].split("sets")[0].substring(1).trim());
@@ -345,7 +377,6 @@ const parseWorkoutLine = (parts) => {
     );
     details.weight = parseFloat(parts[3].split("kg")[0].substring(1).trim());
     details.duration = parseFloat(parts[4].split("min")[0].substring(1).trim());
-    console.log(details);
     return details;
   }
   return null;

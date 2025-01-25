@@ -3,6 +3,7 @@ import {
   UserLogin,
   UserRegister,
   addWorkout,
+  fetchWorkouts,
   getUserDashboard,
   getWorkoutsByDate,
   saveWorkout,
@@ -15,7 +16,8 @@ router.post("/signup", UserRegister);
 router.post("/signin", UserLogin);
 
 router.get("/dashboard", verifyToken, getUserDashboard);
-router.get("/workout", verifyToken, getWorkoutsByDate);
+router.get("/workout/fetch", verifyToken, fetchWorkouts);
+router.get("/workout/", verifyToken, getWorkoutsByDate);
 router.post("/workout", verifyToken, addWorkout);
 router.post("/workout/save", verifyToken, saveWorkout);
 
